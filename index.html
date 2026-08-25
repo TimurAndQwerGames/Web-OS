@@ -1,0 +1,1773 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Simple Web OS</title>
+    <style>
+        /* Сброс стилей */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #2c3e50;
+            color: white;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* --- ЭКРАН ЗАГРУЗКИ --- */
+        #loading-screen {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #0066cc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease-in-out;
+            cursor: wait;
+        }
+        .logo-container {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo-text {
+            font-size: 28px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            color: white;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        #progress-bar-container {
+            width: 300px;
+            height: 20px;
+            background-color: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        #progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: #fff;
+            border-radius: 10px;
+            transition: width 0.1s linear;
+        }
+
+        /* Рабочий стол */
+        .desktop {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 20px;
+            padding: 40px;
+            height: 100%;
+            align-content: start;
+        }
+
+        .icon {
+            width: 80px;
+            text-align: center;
+            cursor: pointer;
+            user-select: none;
+            transition: transform 0.2s;
+        }
+        .icon:hover { transform: scale(1.1); }
+        .icon img { 
+            width: 60px; 
+            height: 60px; 
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+        }
+        .icon-label { margin-top: 8px; font-size: 12px; }
+
+        /* Окно приложения */
+        .window {
+            position: absolute;
+            width: 800px;
+            height: 500px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 10px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2), 0 5px 15px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+            top: 50%; 
+            left: 50%;
+            transform: translate(-50%, -50%);
+            visibility: hidden;
+            opacity: 0;
+            transition: all 0.2s ease-in-out;
+        }
+        .window.active {
+            visibility: visible;
+            opacity: 1;
+        }
+        .window.fullscreen {
+            width: 100vw !important;
+            height: 100vh !important;
+            top: 0 !important;
+            left: 0 !important;
+            transform: none !important;
+            border-radius: 0 !important;
+        }
+        .window-header {
+            background-color: #34495e;
+            color: white;
+            padding: 10px 15px;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+            cursor: move;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .window-title { font-weight: bold; font-size: 14px; }
+        .window-controls button {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 16px;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            line-height: 30px;
+            text-align: center;
+            border-radius: 50%;
+            margin-left: 5px;
+        }
+        .window-controls button:hover { background-color: rgba(255,255,255,0.1); }
+        .close-btn:hover { background-color: #e74c3c; }
+
+        .window-body {
+            flex-grow: 1;
+            padding: 15px;
+            overflow-y: auto;
+            background-color: white;
+            color: #333;
+            border-bottom-left-radius: 10px;
+            border-bottom-right-radius: 10px;
+            position: relative;
+        }
+
+        /* Элементы просмотра */
+        .file-info {
+            background-color: #ecf0f1;
+            color: #2c3e50;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            margin-bottom: 15px;
+            word-break: break-all;
+        }
+        .preview-container {
+            width: 100%;
+            height: calc(100% - 60px);
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background-color: #fafafa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .preview-container iframe, .preview-container video, .preview-container audio {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 4px;
+        }
+        .preview-container img {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 4px;
+        }
+        .code-viewer {
+            width: 100%;
+            height: 100%;
+            font-family: monospace;
+            font-size: 13px;
+            border: none;
+            resize: none;
+            background-color: #282c34;
+            color: #abb2bf;
+            padding: 10px;
+            border-radius: 4px;
+            overflow: auto;
+        }
+
+        /* Панель задач */
+        .taskbar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background-color: #0078d7;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            box-shadow: 0 -5px 10px rgba(0,0,0,0.3);
+            z-index: 100;
+        }
+        .start-menu-button {
+            width: 40px;
+            height: 40px;
+            background-color: #e74c3c;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            margin-right: 15px;
+        }
+        .taskbar-icons {
+            display: flex;
+            gap: 10px;
+            flex-grow: 1;
+        }
+        .task-icon {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 10px;
+            cursor: pointer;
+            padding: 2px 5px;
+            border-radius: 5px;
+        }
+        .task-icon.active {
+            background-color: rgba(255,255,255,0.2);
+        }
+        .task-icon img { width: 20px; height: 20px; }
+
+        /* Стартовое меню */
+        .start-menu {
+            position: fixed;
+            bottom: 40px;
+            left: 20px;
+            width: 250px;
+            background-color: #0078d7;
+            border-radius: 8px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+            visibility: hidden;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.2s ease-in-out;
+            z-index: 200;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 2px solid #005a9e;
+        }
+        .start-menu.open {
+            visibility: visible;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .menu-item {
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            color: white;
+            cursor: pointer;
+            border-bottom: 1px solid #005a9e;
+            height: 40px;
+            font-weight: bold;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        .menu-item:last-child { border-bottom: none; }
+        .menu-item:hover { background-color: #005a9e; }
+        .menu-item img { width: 24px; height: 24px; margin-right: 12px; }
+
+        /* Поле ввода URL в браузере */
+        .input-group {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 0;
+        }
+        .input-group input {
+            flex-grow: 1;
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            outline: none;
+            font-size: 14px;
+        }
+        .input-group input:focus {
+            border-color: #0078d7;
+        }
+        .input-group button {
+            padding: 8px 16px;
+            background-color: #0078d7;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .input-group button:hover {
+            background-color: #005a9e;
+        }
+
+        /* Экран выключения */
+        #shutdown-screen {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 99999;
+            color: #aaa;
+            font-size: 24px;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        #shutdown-screen.active {
+            display: flex;
+        }
+
+        /* ======= СТИЛИ HTML LIVE EDITOR ======= */
+        #editor-main-wrapper {
+            display: flex;
+            height: 100%;
+            width: 100%;
+            transition: all 0.3s ease;
+        }
+
+        #editor-output-container {
+            flex: 1;
+            position: relative;
+            border-right: 2px solid #444;
+            background-color: #f0f0f0;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        #editor-output-container iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        #editor-code-panel {
+            width: 50%;
+            padding: 15px;
+            box-sizing: border-box;
+            background-color: #1e1e1e;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            transition: width 0.3s ease, opacity 0.3s ease;
+        }
+
+        #editor-code-panel h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #fff;
+            text-align: center;
+        }
+
+        #editor-code-panel button {
+            align-self: center;
+            padding: 8px 16px;
+            background-color: #007acc;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            margin-bottom: 8px;
+            transition: background-color 0.2s;
+            border-radius: 3px;
+        }
+        #editor-code-panel button:hover {
+            background-color: #005a9e;
+        }
+
+        #editor-fs-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 4px 10px;
+            font-size: 11px;
+            z-index: 10;
+        }
+
+        #editor-textarea {
+            flex-grow: 1;
+            width: 100%;
+            resize: none;
+            background-color: #252526;
+            color: #d4d4d4;
+            border: 1px solid #333;
+            padding: 10px;
+            font-size: 12px;
+            line-height: 1.5em;
+            font-family: 'Courier New', Courier, monospace;
+            outline: none;
+            white-space: pre;
+            tab-size: 4;
+        }
+
+        .editor-hint {
+            font-size: 11px;
+            color: #aaa;
+            margin-bottom: 8px;
+            line-height: 1.3;
+        }
+
+        #editor-main-wrapper.fullscreen #editor-code-panel {
+            width: 0;
+            padding: 0;
+            opacity: 0;
+            overflow: hidden;
+            pointer-events: none;
+        }
+        #editor-main-wrapper.fullscreen #editor-output-container {
+            flex: 1 1 100%;
+            border-right: none;
+        }
+
+        /* ======= СТИЛИ НОВЫХ ПРИЛОЖЕНИЙ ======= */
+
+        /* --- Paint --- */
+        #paint-toolbar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            padding: 6px 10px;
+            background: #f0f0f0;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+        }
+        #paint-toolbar label {
+            font-size: 12px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        #paint-toolbar input[type="range"] {
+            width: 80px;
+        }
+        #paint-toolbar button {
+            padding: 4px 12px;
+            background: #0078d7;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        #paint-toolbar button:hover { background: #005a9e; }
+        #paint-toolbar button.active-tool {
+            background: #e74c3c;
+        }
+        #paint-toolbar input[type="color"] {
+            width: 36px;
+            height: 30px;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        #paint-canvas-wrapper {
+            flex: 1;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            overflow: hidden;
+            background: #fff;
+            position: relative;
+            min-height: 0;
+        }
+        #paint-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+
+        /* --- Calculator --- */
+        #calc-display {
+            width: 100%;
+            padding: 12px 15px;
+            font-size: 28px;
+            font-weight: bold;
+            text-align: right;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            outline: none;
+            background: #f8f8f8;
+            color: #222;
+            margin-bottom: 10px;
+            font-family: 'Segoe UI', monospace;
+        }
+        #calc-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+        }
+        #calc-grid button {
+            padding: 16px 0;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.1s, transform 0.05s;
+            background: #e0e0e0;
+            color: #222;
+        }
+        #calc-grid button:active {
+            transform: scale(0.95);
+        }
+        #calc-grid button:hover {
+            filter: brightness(0.92);
+        }
+        #calc-grid .calc-op {
+            background: #f0a030;
+            color: white;
+        }
+        #calc-grid .calc-eq {
+            background: #0078d7;
+            color: white;
+        }
+        #calc-grid .calc-clear {
+            background: #e74c3c;
+            color: white;
+        }
+        #calc-grid .calc-func {
+            background: #555;
+            color: white;
+        }
+        #calc-grid .calc-zero {
+            grid-column: span 2;
+        }
+
+        /* --- Terminal --- */
+        #term-body {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            background: #1e1e1e;
+            color: #00ff41;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            padding: 0;
+            overflow: hidden;
+        }
+        #term-output {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.5;
+            scroll-behavior: smooth;
+        }
+        #term-output .term-prompt {
+            color: #00ff41;
+        }
+        #term-output .term-error {
+            color: #ff5555;
+        }
+        #term-output .term-info {
+            color: #55b5ff;
+        }
+        #term-output .term-warn {
+            color: #ffaa00;
+        }
+        #term-input-line {
+            display: flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-top: 1px solid #333;
+            background: #151515;
+        }
+        #term-input-line span {
+            color: #00ff41;
+            margin-right: 6px;
+            font-size: 14px;
+        }
+        #term-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #00ff41;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            outline: none;
+        }
+
+        /* --- Clock --- */
+        #clock-body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            background: linear-gradient(135deg, #0c0c1d 0%, #1a1a3e 50%, #0d0d28 100%);
+            color: white;
+            padding: 20px;
+            overflow: hidden;
+        }
+        #clock-time {
+            font-size: 82px;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 4px;
+            text-shadow: 0 0 20px rgba(0,120,215,0.4);
+            color: #e8e8ff;
+        }
+        #clock-date {
+            font-size: 26px;
+            margin-top: 12px;
+            opacity: 0.85;
+            letter-spacing: 1px;
+            color: #b0b0dd;
+        }
+        #clock-seconds {
+            font-size: 22px;
+            opacity: 0.6;
+            margin-left: 8px;
+            vertical-align: super;
+        }
+        .clock-sep {
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Экран загрузки -->
+<div id="loading-screen">
+    <div class="logo-container">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style="width: 64px; height: 64px; fill: white; margin-bottom: 15px;">
+            <path d="M14,2L20,8V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2H14M14,4H6V20H18V8H14M13,10V12H17V10H13M13,14V16H11V14H13Z"/>
+        </svg>
+        <div class="logo-text">Simple Web OS</div>
+    </div>
+    <div id="progress-bar-container">
+        <div id="progress-bar"></div>
+    </div>
+</div>
+
+<!-- Экран выключения -->
+<div id="shutdown-screen">
+    <span>Система выключена</span>
+</div>
+
+<div class="desktop" id="desktop">
+    <!-- Иконки на рабочем столе -->
+    <div class="icon" onclick="openWindow('notepad')">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M14,2L20,8V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2H14M14,4H6V20H18V8H14M13,10V12H17V10H13M13,14V16H11V14H13Z'/%3E%3C/svg%3E" alt="Блокнот">
+        <div class="icon-label">Блокнот</div>
+    </div>
+    <div class="icon" onclick="openWindow('browser')">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M4,6V18H20V6H4M6,9H18V11H6V9M6,13H14V15H6V13Z'/%3E%3C/svg%3E" alt="Браузер">
+        <div class="icon-label">Браузер</div>
+    </div>
+    <div class="icon" onclick="openWindow('gallery')">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M22,16V4A2,2 0 0,0 20,2H8A2,2 0 0,0 6,4V16A2,2 0 0,0 8,18H20A2,2 0 0,0 22,16M18,16H8V4H18V16M12,11A2,2 0 1,0 14,13A2,2 0 0,0 12,11M12,15A2,2 0 1,0 14,17A2,2 0 0,0 12,15Z'/%3E%3C/svg%3E" alt="Галерея">
+        <div class="icon-label">Галерея</div>
+    </div>
+    <div class="icon" onclick="openWindow('viewer')">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M14,2L20,8V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2H14M14,4H6V20H18V8H14M13,10V12H17V10H13M13,14V16H11V14H13Z'/%3E%3C/svg%3E" alt="Файлы">
+        <div class="icon-label">Просмотрщик</div>
+    </div>
+    <div class="icon" onclick="openWindow('editor')">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M9.5,16.5L11,18L6,13L11,8L9.5,6.5L3,13L9.5,16.5M14.5,16.5L21,13L14.5,9.5L13,11L18,13L13,15L14.5,16.5Z'/%3E%3C/svg%3E" alt="Live Editor">
+        <div class="icon-label">Live Editor</div>
+    </div>
+
+    <!-- Иконки дополнительных приложений -->
+    <div class="icon" onclick="openWindow('paint')">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M20.71,4.63L19.37,3.29C19,2.9 18.35,2.9 17.96,3.29L9,12.25L11.75,15L20.71,6.04C21.1,5.65 21.1,5 20.71,4.63M7,14A3,3 0 0,0 4,17C4,18.31 2.84,19 2,19C2.92,20.22 4.5,21 6,21A4,4 0 0,0 10,17A3,3 0 0,0 7,14Z'/%3E%3C/svg%3E" alt="Пэинт">
+        <div class="icon-label">Пэинт</div>
+    </div>
+    <div class="icon" onclick="openWindow('calculator')">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M7,2H17A2,2 0 0,1 19,4V20A2,2 0 0,1 17,22H7A2,2 0 0,1 5,20V4A2,2 0 0,1 7,2M7,4V8H17V4H7M7,10V12H9V10H7M11,10V12H13V10H11M15,10V12H17V10H15M7,14V16H9V14H7M11,14V16H13V14H11M15,14V16H17V14H15M7,18V20H9V18H7M11,18V20H13V18H11M15,18V20H17V18H15Z'/%3E%3C/svg%3E" alt="Калькулятор">
+        <div class="icon-label">Калькулятор</div>
+    </div>
+    <div class="icon" onclick="openWindow('terminal')">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M12,14H14V12H12M16,14H18V12H16M3,3H21A2,2 0 0,1 23,5V19A2,2 0 0,1 21,21H3A2,2 0 0,1 1,19V5A2,2 0 0,1 3,3M3,5V19H21V5H3M5,7H9V9H7V11H9V13H7V15H9V17H5V7Z'/%3E%3C/svg%3E" alt="Терминал">
+        <div class="icon-label">Терминал</div>
+    </div>
+    <div class="icon" onclick="openWindow('clock')">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z'/%3E%3C/svg%3E" alt="Часы">
+        <div class="icon-label">Часы</div>
+    </div>
+
+    <!-- ★ НОВОЕ: БФГ Форум -->
+    <div class="icon" onclick="openWindow('bfg-forum')">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M20,2H4A2,2 0 0,0 2,4V22L6,18H20A2,2 0 0,0 22,16V4A2,2 0 0,0 20,2M20,16H6L4,18V4H20M13,14H11V12H13M13,10H11V6H13V10Z'/%3E%3C/svg%3E" alt="БФГ Форум">
+        <div class="icon-label">БФГ Форум</div>
+    </div>
+</div>
+
+<!-- Панель задач -->
+<div class="taskbar">
+    <div class="start-menu-button" onclick="toggleStartMenu(event)">☰</div>
+    <div class="taskbar-icons" id="taskbarIcons"></div>
+</div>
+
+<!-- Стартовое меню -->
+<div class="start-menu" id="startMenu">
+    <div class="menu-item" onclick="openWindow('notepad'); toggleStartMenu();">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M14,2L20,8V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2H14M14,4H6V20H18V8H14M13,10V12H17V10H13M13,14V16H11V14H13Z'/%3E%3C/svg%3E"> Блокнот
+    </div>
+    <div class="menu-item" onclick="openWindow('browser'); toggleStartMenu();">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M4,6V18H20V6H4M6,9H18V11H6V9M6,13H14V15H6V13Z'/%3E%3C/svg%3E"> Браузер
+    </div>
+    <div class="menu-item" onclick="openWindow('gallery'); toggleStartMenu();">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M22,16V4A2,2 0 0,0 20,2H8A2,2 0 0,0 6,4V16A2,2 0 0,0 8,18H20A2,2 0 0,0 22,16M18,16H8V4H18V16M12,11A2,2 0 1,0 14,13A2,2 0 0,0 12,11M12,15A2,2 0 1,0 14,17A2,2 0 0,0 12,15Z'/%3E%3C/svg%3E"> Галерея
+    </div>
+    <div class="menu-item" onclick="openWindow('viewer'); toggleStartMenu();">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M14,2L20,8V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2H14M14,4H6V20H18V8H14M13,10V12H17V10H13M13,14V16H11V14H13Z'/%3E%3C/svg%3E"> Просмотрщик
+    </div>
+    <div class="menu-item" onclick="openWindow('editor'); toggleStartMenu();">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M9.5,16.5L11,18L6,13L11,8L9.5,6.5L3,13L9.5,16.5M14.5,16.5L21,13L14.5,9.5L13,11L18,13L13,15L14.5,16.5Z'/%3E%3C/svg%3E"> Live Editor
+    </div>
+
+    <div class="menu-item" onclick="openWindow('paint'); toggleStartMenu();">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M20.71,4.63L19.37,3.29C19,2.9 18.35,2.9 17.96,3.29L9,12.25L11.75,15L20.71,6.04C21.1,5.65 21.1,5 20.71,4.63M7,14A3,3 0 0,0 4,17C4,18.31 2.84,19 2,19C2.92,20.22 4.5,21 6,21A4,4 0 0,0 10,17A3,3 0 0,0 7,14Z'/%3E%3C/svg%3E"> Пэинт
+    </div>
+    <div class="menu-item" onclick="openWindow('calculator'); toggleStartMenu();">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M7,2H17A2,2 0 0,1 19,4V20A2,2 0 0,1 17,22H7A2,2 0 0,1 5,20V4A2,2 0 0,1 7,2M7,4V8H17V4H7M7,10V12H9V10H7M11,10V12H13V10H11M15,10V12H17V10H15M7,14V16H9V14H7M11,14V16H13V14H11M15,14V16H17V14H15M7,18V20H9V18H7M11,18V20H13V18H11M15,18V20H17V18H15Z'/%3E%3C/svg%3E"> Калькулятор
+    </div>
+    <div class="menu-item" onclick="openWindow('terminal'); toggleStartMenu();">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M12,14H14V12H12M16,14H18V12H16M3,3H21A2,2 0 0,1 23,5V19A2,2 0 0,1 21,21H3A2,2 0 0,1 1,19V5A2,2 0 0,1 3,3M3,5V19H21V5H3M5,7H9V9H7V11H9V13H7V15H9V17H5V7Z'/%3E%3C/svg%3E"> Терминал
+    </div>
+    <div class="menu-item" onclick="openWindow('clock'); toggleStartMenu();">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z'/%3E%3C/svg%3E"> Часы
+    </div>
+
+    <!-- ★ НОВОЕ: БФГ Форум в меню -->
+    <div class="menu-item" onclick="openWindow('bfg-forum'); toggleStartMenu();">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M20,2H4A2,2 0 0,0 2,4V22L6,18H20A2,2 0 0,0 22,16V4A2,2 0 0,0 20,2M20,16H6L4,18V4H20M13,14H11V12H13M13,10H11V6H13V10Z'/%3E%3C/svg%3E"> БФГ Форум
+    </div>
+
+    <div class="menu-item" style="justify-content: center; background-color: #005a9e;" onclick="shutdownSystem()">
+        ► Выключить систему
+    </div>
+    <div class="menu-item" style="justify-content: center; background-color: #005a9e;" onclick="restartPage()">
+        ↻ Перезагрузить
+    </div>
+</div>
+
+<!-- Окна приложений -->
+<div id="windows-container">
+    <!-- Блокнот -->
+    <div class="window" id="notepad">
+        <div class="window-header">
+            <div class="window-title">Блокнот</div>
+            <div class="window-controls">
+                <button class="min-btn">-</button>
+                <button class="max-btn">□</button>
+                <button class="close-btn">×</button>
+            </div>
+        </div>
+        <div class="window-body">
+            <textarea style="width: 100%; height: 100%; border: none; resize: none; outline: none; font-family: inherit;" placeholder="Введите текст..."></textarea>
+        </div>
+    </div>
+
+    <!-- Браузер -->
+    <div class="window" id="browser">
+        <div class="window-header">
+            <div class="window-title">Простой браузер</div>
+            <div class="window-controls">
+                <button class="min-btn">-</button>
+                <button class="max-btn">□</button>
+                <button class="close-btn">×</button>
+            </div>
+        </div>
+        <div class="window-body">
+            <div class="input-group">
+                <input type="text" placeholder="https://" id="url-input">
+                <button id="go-btn">Перейти</button>
+            </div>
+            <iframe id="web-frame" src="" style="width: 100%; height: calc(100% - 50px); border: none; margin-top: 10px;"></iframe>
+        </div>
+    </div>
+
+    <!-- Галерея -->
+    <div class="window" id="gallery">
+        <div class="window-header">
+            <div class="window-title">Галерея</div>
+            <div class="window-controls">
+                <button class="min-btn">-</button>
+                <button class="max-btn">□</button>
+                <button class="close-btn">×</button>
+            </div>
+        </div>
+        <div class="window-body">
+            <p>Здесь могла бы быть ваша галерея изображений.</p>
+            <img src="https://picsum.photos/seed/webos/300/200" alt="Пример фото" style="border-radius: 8px;">
+        </div>
+    </div>
+
+    <!-- Просмотрщик -->
+    <div class="window" id="viewer">
+        <div class="window-header">
+            <div class="window-title">Универсальный просмотрщик</div>
+            <div class="window-controls">
+                <button class="min-btn">-</button>
+                <button class="max-btn">□</button>
+                <button class="close-btn">×</button>
+            </div>
+        </div>
+        <div class="window-body">
+            <div class="file-info" id="file-info">Нажмите "Выбрать файл", чтобы начать</div>
+            <button id="select-file-btn" style="padding: 8px 15px; margin-bottom: 10px;">Выбрать файл</button>
+            <div class="preview-container" id="preview-container"></div>
+        </div>
+    </div>
+
+    <!-- HTML Live Editor -->
+    <div class="window" id="editor">
+        <div class="window-header">
+            <div class="window-title">HTML Live Editor</div>
+            <div class="window-controls">
+                <button class="min-btn">-</button>
+                <button class="max-btn">□</button>
+                <button class="close-btn">×</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding: 0; overflow: hidden;">
+            <div id="editor-main-wrapper">
+                <div id="editor-output-container">
+                    <iframe id="editor-output-frame"></iframe>
+                </div>
+                <div id="editor-code-panel">
+                    <button id="editor-fs-btn" onclick="toggleEditorFullScreen()">Во весь экран</button>
+                    <h3>Введите полный код страницы</h3>
+                    <button onclick="applyEditorCode()">Применить код</button>
+                    <div class="editor-hint">
+                        Вставьте сюда полный HTML-документ.<br>
+                        Ctrl+Enter — быстрый запуск
+                    </div>
+                    <textarea id="editor-textarea" spellcheck="false"><!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Моя игра</title>
+    <style>
+        body { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            display: flex; 
+            height: 100vh; 
+            margin: 0; 
+            justify-content: center; 
+            align-items: center; 
+            font-family: sans-serif; 
+            color: white;
+        }
+        .box {
+            width: 100px;
+            height: 100px;
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            animation: bounce 1s infinite alternate;
+        }
+        @keyframes bounce {
+            from { transform: translateY(-20px); }
+            to { transform: translateY(20px); }
+        }
+    </style>
+</head>
+<body>
+    <div class="box">Я создан<br>вашим кодом!</div>
+    <script>
+        console.log('Скрипт внутри вашей страницы тоже работает!');
+    &lt;/script&gt;
+</body>
+</html></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Пэинт -->
+    <div class="window" id="paint">
+        <div class="window-header">
+            <div class="window-title">Пэинт</div>
+            <div class="window-controls">
+                <button class="min-btn">-</button>
+                <button class="max-btn">□</button>
+                <button class="close-btn">×</button>
+            </div>
+        </div>
+        <div class="window-body" style="display:flex;flex-direction:column;padding:8px;">
+            <div id="paint-toolbar">
+                <input type="color" id="paint-color" value="#000000" title="Цвет кисти">
+                <label>Толщ: <input type="range" id="paint-size" min="1" max="30" value="4" style="width:70px;"></label>
+                <button id="paint-eraser-btn">Ластик</button>
+                <button id="paint-clear-btn">Очистить</button>
+                <button id="paint-save-btn">Сохранить</button>
+                <span style="font-size:11px;color:#888;margin-left:auto;" id="paint-status">Кисть</span>
+            </div>
+            <div id="paint-canvas-wrapper">
+                <canvas id="paint-canvas"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Калькулятор -->
+    <div class="window" id="calculator" style="width:320px;height:440px;">
+        <div class="window-header">
+            <div class="window-title">Калькулятор</div>
+            <div class="window-controls">
+                <button class="min-btn">-</button>
+                <button class="max-btn">□</button>
+                <button class="close-btn">×</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:12px;display:flex;flex-direction:column;">
+            <input type="text" id="calc-display" readonly value="0">
+            <div id="calc-grid">
+                <button class="calc-clear" data-calc="C">C</button>
+                <button class="calc-func" data-calc="±">±</button>
+                <button class="calc-func" data-calc="%">%</button>
+                <button class="calc-op" data-calc="÷">÷</button>
+                <button data-calc="7">7</button>
+                <button data-calc="8">8</button>
+                <button data-calc="9">9</button>
+                <button class="calc-op" data-calc="×">×</button>
+                <button data-calc="4">4</button>
+                <button data-calc="5">5</button>
+                <button data-calc="6">6</button>
+                <button class="calc-op" data-calc="-">−</button>
+                <button data-calc="1">1</button>
+                <button data-calc="2">2</button>
+                <button data-calc="3">3</button>
+                <button class="calc-op" data-calc="+">+</button>
+                <button class="calc-zero" data-calc="0">0</button>
+                <button data-calc=".">,</button>
+                <button class="calc-eq" data-calc="=">=</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Терминал -->
+    <div class="window" id="terminal" style="width:720px;height:450px;">
+        <div class="window-header">
+            <div class="window-title">Терминал</div>
+            <div class="window-controls">
+                <button class="min-btn">-</button>
+                <button class="max-btn">□</button>
+                <button class="close-btn">×</button>
+            </div>
+        </div>
+        <div class="window-body" id="term-body">
+            <div id="term-output"><span class="term-info">=== Simple Web OS Terminal v1.0 ===</span><br>Введите <span class="term-warn">help</span> для списка команд.<br><br></div>
+            <div id="term-input-line">
+                <span>guest@webos:~$</span>
+                <input type="text" id="term-input" autofocus>
+            </div>
+        </div>
+    </div>
+
+    <!-- Часы -->
+    <div class="window" id="clock" style="width:520px;height:320px;">
+        <div class="window-header">
+            <div class="window-title">Часы</div>
+            <div class="window-controls">
+                <button class="min-btn">-</button>
+                <button class="max-btn">□</button>
+                <button class="close-btn">×</button>
+            </div>
+        </div>
+        <div class="window-body" id="clock-body">
+            <div id="clock-time">
+                <span id="clock-hours">00</span><span class="clock-sep">:</span><span id="clock-minutes">00</span><span id="clock-seconds"></span>
+            </div>
+            <div id="clock-date">Загрузка...</div>
+        </div>
+    </div>
+
+    <!-- ★ НОВОЕ: БФГ Форум -->
+    <div class="window" id="bfg-forum" style="width:900px;height:550px;">
+        <div class="window-header">
+            <div class="window-title">БФГ Форум</div>
+            <div class="window-controls">
+                <button class="min-btn">-</button>
+                <button class="max-btn">□</button>
+                <button class="close-btn">×</button>
+            </div>
+        </div>
+        <div class="window-body" style="padding:0;overflow:hidden;">
+            <iframe src="https://forum.bfg-games.com" style="width:100%;height:100%;border:none;" allowfullscreen sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+        </div>
+    </div>
+</div>
+
+<script>
+    let draggedWindow = null;
+    let offsetX = 0, offsetY = 0;
+    const windowsContainer = document.getElementById('windows-container');
+    const taskbarIconsDiv = document.getElementById('taskbarIcons');
+    const startMenu = document.getElementById('startMenu');
+
+    // --- Управление окнами ---
+    function openWindow(id) {
+        const windowEl = document.getElementById(id);
+        if (!windowEl) return;
+
+        const currentMaxZ = Math.max(...Array.from(windowsContainer.children).map(el => parseInt(window.getComputedStyle(el).zIndex) || 0));
+        windowEl.style.zIndex = currentMaxZ + 1;
+        windowEl.classList.add('active');
+        updateTaskbarIcon(id, true);
+    }
+
+    function closeWindow(id) {
+        const windowEl = document.getElementById(id);
+        if (windowEl) { 
+            windowEl.classList.remove('active'); 
+            updateTaskbarIcon(id, false); 
+        }
+    }
+
+    function minimizeWindow(id) {
+        const windowEl = document.getElementById(id);
+        if (windowEl) {
+            windowEl.classList.remove('active');
+        }
+    }
+
+    function toggleFullscreen(id) {
+        const windowEl = document.getElementById(id);
+        if (!windowEl) return;
+
+        if (!windowEl.classList.contains('fullscreen')) {
+            windowEl.dataset.prevWidth = windowEl.style.width || '900px';
+            windowEl.dataset.prevHeight = windowEl.style.height || '550px';
+            windowEl.dataset.prevTop = windowEl.style.top;
+            windowEl.dataset.prevLeft = windowEl.style.left;
+            windowEl.dataset.prevTransform = windowEl.style.transform;
+            windowEl.classList.add('fullscreen');
+        } else {
+            windowEl.classList.remove('fullscreen');
+            windowEl.style.width = windowEl.dataset.prevWidth || '900px';
+            windowEl.style.height = windowEl.dataset.prevHeight || '550px';
+            windowEl.style.top = windowEl.dataset.prevTop || '50%';
+            windowEl.style.left = windowEl.dataset.prevLeft || '50%';
+            windowEl.style.transform = windowEl.dataset.prevTransform || 'translate(-50%, -50%)';
+        }
+    }
+
+    function updateTaskbarIcon(id, isActive) {
+        let icon = document.querySelector(`[data-task-id="${id}"]`);
+        const appNames = {
+            'notepad': 'Блокнот',
+            'browser': 'Браузер',
+            'gallery': 'Галерея',
+            'viewer': 'Просмотрщик',
+            'editor': 'Live Editor',
+            'paint': 'Пэинт',
+            'calculator': 'Калькулятор',
+            'terminal': 'Терминал',
+            'clock': 'Часы',
+            'bfg-forum': 'БФГ Форум'  // ★ НОВОЕ
+        };
+        const svgMap = {
+            'notepad':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23fff" d="M14,2L20,8V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2H14M14,4H6V20H18V8H14M13,10V12H17V10H13M13,14V16H11V14H13Z"/></svg>',
+            'browser':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23fff" d="M4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M4,6V18H20V6H4M6,9H18V11H6V9M6,13H14V15H6V13Z"/></svg>',
+            'gallery':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23fff" d="M22,16V4A2,2 0 0,0 20,2H8A2,2 0 0,0 6,4V16A2,2 0 0,0 8,18H20A2,2 0 0,0 22,16M18,16H8V4H18V16M12,11A2,2 0 1,0 14,13A2,2 0 0,0 12,11M12,15A2,2 0 1,0 14,17A2,2 0 0,0 12,15Z"/></svg>',
+            'viewer':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23fff" d="M14,2L20,8V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2H14M14,4H6V20H18V8H14M13,10V12H17V10H13M13,14V16H11V14H13Z"/></svg>',
+            'editor':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23fff" d="M9.5,16.5L11,18L6,13L11,8L9.5,6.5L3,13L9.5,16.5M14.5,16.5L21,13L14.5,9.5L13,11L18,13L13,15L14.5,16.5Z"/></svg>',
+            'paint':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23fff" d="M20.71,4.63L19.37,3.29C19,2.9 18.35,2.9 17.96,3.29L9,12.25L11.75,15L20.71,6.04C21.1,5.65 21.1,5 20.71,4.63M7,14A3,3 0 0,0 4,17C4,18.31 2.84,19 2,19C2.92,20.22 4.5,21 6,21A4,4 0 0,0 10,17A3,3 0 0,0 7,14Z"/></svg>',
+            'calculator':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23fff" d="M7,2H17A2,2 0 0,1 19,4V20A2,2 0 0,1 17,22H7A2,2 0 0,1 5,20V4A2,2 0 0,1 7,2M7,4V8H17V4H7M7,10V12H9V10H7M11,10V12H13V10H11M15,10V12H17V10H15M7,14V16H9V14H7M11,14V16H13V14H11M15,14V16H17V14H15M7,18V20H9V18H7M11,18V20H13V18H11M15,18V20H17V18H15Z"/></svg>',
+            'terminal':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23fff" d="M12,14H14V12H12M16,14H18V12H16M3,3H21A2,2 0 0,1 23,5V19A2,2 0 0,1 21,21H3A2,2 0 0,1 1,19V5A2,2 0 0,1 3,3M3,5V19H21V5H3M5,7H9V9H7V11H9V13H7V15H9V17H5V7Z"/></svg>',
+            'clock':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23fff" d="M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z"/></svg>',
+            'bfg-forum':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23fff" d="M20,2H4A2,2 0 0,0 2,4V22L6,18H20A2,2 0 0,0 22,16V4A2,2 0 0,0 20,2M20,16H6L4,18V4H20M13,14H11V12H13M13,10H11V6H13V10Z"/></svg>'
+        };
+
+        if (!icon) {
+            icon = document.createElement('div');
+            icon.className = 'task-icon';
+            icon.dataset.taskId = id;
+            icon.innerHTML = `${svgMap[id]}<span>${appNames[id]}</span>`;
+            icon.onclick = () => {
+                const win = document.getElementById(id);
+                if (win && win.classList.contains('active')) {
+                    minimizeWindow(id);
+                } else {
+                    openWindow(id);
+                }
+            };
+            taskbarIconsDiv.appendChild(icon);
+        }
+
+        if (isActive) { 
+            icon.classList.add('active'); 
+        }
+    }
+
+    // --- События кнопок окон (делегирование) ---
+    windowsContainer.addEventListener('click', function(e) {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+
+        const win = btn.closest('.window');
+        if (!win) return;
+
+        if (btn.classList.contains('close-btn')) {
+            closeWindow(win.id);
+        } else if (btn.classList.contains('min-btn')) {
+            minimizeWindow(win.id);
+        } else if (btn.classList.contains('max-btn')) {
+            toggleFullscreen(win.id);
+        }
+    });
+
+    // --- Перетаскивание окон ---
+    document.querySelectorAll('.window-header').forEach(header => { 
+        header.addEventListener('mousedown', e => { 
+            if (e.target.closest('.window-controls')) return;
+
+            const win = header.parentElement;
+            if (!win.classList.contains('fullscreen')) {
+                draggedWindow = win; 
+                offsetX = e.clientX - draggedWindow.getBoundingClientRect().left; 
+                offsetY = e.clientY - draggedWindow.getBoundingClientRect().top; 
+                document.addEventListener('mousemove', onMouseMove); 
+                document.addEventListener('mouseup', onMouseUp); 
+            }
+        }); 
+    });
+
+    function onMouseMove(e) { 
+        if (draggedWindow) { 
+            const currentMaxZ = Math.max(...Array.from(windowsContainer.children).map(el => parseInt(window.getComputedStyle(el).zIndex) || 0)); 
+            draggedWindow.style.zIndex = currentMaxZ + 1;
+
+            let newX = e.clientX - offsetX;
+            let newY = e.clientY - offsetY;
+
+            if (newY < 0) newY = 0;
+
+            draggedWindow.style.left = newX + 'px'; 
+            draggedWindow.style.top = newY + 'px'; 
+            draggedWindow.style.transform = 'none';
+        } 
+    }
+
+    function onMouseUp() { 
+        document.removeEventListener('mousemove', onMouseMove); 
+        document.removeEventListener('mouseup', onMouseUp); 
+        draggedWindow = null; 
+    }
+
+    // --- Стартовое меню ---
+    function toggleStartMenu(event) { 
+        if (event) event.stopPropagation();
+        startMenu.classList.toggle('open'); 
+    } 
+
+    document.body.addEventListener('click', (e) => { 
+        if (!e.target.closest('.start-menu-button') && !e.target.closest('.start-menu')) { 
+            startMenu.classList.remove('open'); 
+        } 
+    });
+
+    // --- Выключение / перезагрузка ---
+    function shutdownSystem() {
+        startMenu.classList.remove('open');
+        const shutdownScreen = document.getElementById('shutdown-screen');
+        shutdownScreen.classList.add('active');
+        document.getElementById('desktop').style.display = 'none';
+        document.querySelectorAll('.window').forEach(w => w.style.display = 'none');
+        setTimeout(() => {
+            shutdownScreen.innerHTML = '<span style="opacity:0.5;">Система выключена</span>';
+        }, 2000);
+    }
+
+    function restartPage() {
+        startMenu.classList.remove('open');
+        location.reload();
+    }
+
+    // ====== ЛОГИКА HTML LIVE EDITOR ======
+    let editorBlobUrl = null;
+
+    function applyEditorCode() {
+        const textarea = document.getElementById('editor-textarea');
+        const iframe = document.getElementById('editor-output-frame');
+        const userCode = textarea.value;
+
+        if (editorBlobUrl) {
+            URL.revokeObjectURL(editorBlobUrl);
+        }
+
+        try {
+            const blob = new Blob([userCode], { type: 'text/html' });
+            editorBlobUrl = URL.createObjectURL(blob);
+            iframe.src = editorBlobUrl;
+        } catch (err) {
+            console.error('Ошибка при создании страницы:', err);
+        }
+    }
+
+    function toggleEditorFullScreen() {
+        const wrapper = document.getElementById('editor-main-wrapper');
+        wrapper.classList.toggle('fullscreen');
+
+        const btn = document.getElementById('editor-fs-btn');
+        btn.textContent = wrapper.classList.contains('fullscreen') ? 'Свернуть' : 'Во весь экран';
+    }
+
+    // ========================================================================
+    // ====== НОВЫЕ ПРИЛОЖЕНИЯ ======
+    // ========================================================================
+
+    // -------------------- ПЭИНТ --------------------
+    (function initPaint() {
+        const canvas = document.getElementById('paint-canvas');
+        const wrapper = document.getElementById('paint-canvas-wrapper');
+        const ctx = canvas.getContext('2d');
+        const colorPicker = document.getElementById('paint-color');
+        const sizeSlider = document.getElementById('paint-size');
+        const eraserBtn = document.getElementById('paint-eraser-btn');
+        const clearBtn = document.getElementById('paint-clear-btn');
+        const saveBtn = document.getElementById('paint-save-btn');
+        const status = document.getElementById('paint-status');
+
+        let isDrawing = false;
+        let isEraser = false;
+        let lastX = 0, lastY = 0;
+        let paintHistory = [];
+
+        function resizeCanvas() {
+            const rect = wrapper.getBoundingClientRect();
+            const w = Math.floor(rect.width);
+            const h = Math.floor(rect.height);
+            if (canvas.width !== w || canvas.height !== h) {
+                let tempData = null;
+                if (canvas.width > 0 && canvas.height > 0) {
+                    tempData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                }
+                canvas.width = w;
+                canvas.height = h;
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, w, h);
+                if (tempData) {
+                    try { ctx.putImageData(tempData, 0, 0); } catch(e) {}
+                }
+                saveState();
+            }
+        }
+
+        function saveState() {
+            paintHistory.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+            if (paintHistory.length > 30) paintHistory.shift();
+        }
+
+        function undo() {
+            if (paintHistory.length > 1) {
+                paintHistory.pop();
+                ctx.putImageData(paintHistory[paintHistory.length - 1], 0, 0);
+            } else if (paintHistory.length === 1) {
+                ctx.putImageData(paintHistory[0], 0, 0);
+            }
+        }
+
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+            return { x, y };
+        }
+
+        function startDraw(e) {
+            e.preventDefault();
+            isDrawing = true;
+            const pos = getPos(e);
+            lastX = pos.x;
+            lastY = pos.y;
+            saveState();
+        }
+
+        function draw(e) {
+            e.preventDefault();
+            if (!isDrawing) return;
+            const pos = getPos(e);
+
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(pos.x, pos.y);
+            ctx.strokeStyle = isEraser ? '#ffffff' : colorPicker.value;
+            ctx.lineWidth = isEraser ? parseInt(sizeSlider.value) * 2 : parseInt(sizeSlider.value);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+
+            lastX = pos.x;
+            lastY = pos.y;
+        }
+
+        function stopDraw(e) {
+            e.preventDefault();
+            isDrawing = false;
+        }
+
+        canvas.addEventListener('mousedown', startDraw);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDraw);
+        canvas.addEventListener('mouseleave', stopDraw);
+
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); const t = e.touches[0]; startDraw({ clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} }); });
+        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); const t = e.touches[0]; draw({ clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} }); });
+        canvas.addEventListener('touchend', stopDraw);
+
+        eraserBtn.addEventListener('click', () => {
+            isEraser = !isEraser;
+            eraserBtn.classList.toggle('active-tool');
+            status.textContent = isEraser ? 'Ластик' : 'Кисть';
+        });
+
+        clearBtn.addEventListener('click', () => {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            saveState();
+        });
+
+        saveBtn.addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = 'рисунок.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        });
+
+        const ro = new ResizeObserver(() => resizeCanvas());
+        ro.observe(wrapper);
+        setTimeout(resizeCanvas, 100);
+
+        canvas.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'z') undo(); });
+        canvas.tabIndex = 0;
+    })();
+
+    // -------------------- КАЛЬКУЛЯТОР --------------------
+    (function initCalc() {
+        const display = document.getElementById('calc-display');
+        const grid = document.getElementById('calc-grid');
+
+        let current = '0';
+        let previous = null;
+        let operation = null;
+        let resetNext = false;
+
+        function updateDisplay() { display.value = current; }
+
+        function inputDigit(digit) {
+            if (resetNext) { current = digit; resetNext = false; }
+            else { if (current === '0' && digit !== '.') current = digit; else current += digit; }
+        }
+
+        function inputDecimal() {
+            if (resetNext) { current = '0.'; resetNext = false; return; }
+            if (!current.includes('.')) current += '.';
+        }
+
+        function handleOp(op) {
+            if (operation && !resetNext) calculate();
+            previous = current;
+            operation = op;
+            resetNext = true;
+        }
+
+        function calculate() {
+            let result;
+            const prev = parseFloat(previous);
+            const curr = parseFloat(current);
+            if (isNaN(prev) || isNaN(curr)) return;
+            switch (operation) {
+                case '+': result = prev + curr; break;
+                case '-': result = prev - curr; break;
+                case '×': result = prev * curr; break;
+                case '÷': result = curr !== 0 ? prev / curr : 'Ошибка'; break;
+                case '%': result = prev % curr; break;
+                default: return;
+            }
+            current = result === 'Ошибка' ? 'Ошибка' : String(parseFloat(result.toFixed(10)));
+            operation = null; previous = null; resetNext = true;
+        }
+
+        function percent() { current = String(parseFloat(current) / 100); }
+        function negate() { if (current !== '0') current = current.startsWith('-') ? current.slice(1) : '-' + current; }
+        function clearAll() { current = '0'; previous = null; operation = null; resetNext = false; }
+
+        grid.addEventListener('click', (e) => {
+            const btn = e.target.closest('button');
+            if (!btn) return;
+            const val = btn.dataset.calc;
+            if (val === undefined) return;
+            if (val === 'C') clearAll();
+            else if (val === '±') negate();
+            else if (val === '%') percent();
+            else if (val === '=') { if (operation) calculate(); }
+            else if (['+', '-', '×', '÷'].includes(val)) handleOp(val);
+            else if (val === '.') inputDecimal();
+            else inputDigit(val);
+            updateDisplay();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            const win = document.getElementById('calculator');
+            if (!win.classList.contains('active')) return;
+            if (e.key >= '0' && e.key <= '9') { inputDigit(e.key); updateDisplay(); }
+            else if (e.key === '.') { inputDecimal(); updateDisplay(); }
+            else if (e.key === 'Enter' || e.key === '=') { if (operation) calculate(); updateDisplay(); }
+            else if (e.key === 'Escape' || e.key === 'c' || e.key === 'C') { clearAll(); updateDisplay(); }
+            else if (e.key === '+' || e.key === '-') { handleOp(e.key === '+' ? '+' : '-'); updateDisplay(); }
+            else if (e.key === '*') { handleOp('×'); updateDisplay(); }
+            else if (e.key === '/') { e.preventDefault(); handleOp('÷'); updateDisplay(); }
+            else if (e.key === '%') { percent(); updateDisplay(); }
+        });
+    })();
+
+    // -------------------- ТЕРМИНАЛ --------------------
+    (function initTerminal() {
+        const output = document.getElementById('term-output');
+        const input = document.getElementById('term-input');
+        let history = [];
+        let histIdx = -1;
+        const startTime = Date.now();
+
+        const COMMANDS = {
+            help: 'Доступные команды:\n' +
+                  '  help              — показать эту справку\n' +
+                  '  echo <текст>      — вывести текст\n' +
+                  '  date              — показать дату и время\n' +
+                  '  whoami            — показать имя пользователя\n' +
+                  '  clear             — очистить терминал\n' +
+                  '  pwd               — показать текущую директорию\n' +
+                  '  ls                — список файлов\n' +
+                  '  cat <файл>        — показать содержимое файла\n' +
+                  '  neofetch          — информация о системе\n' +
+                  '  calc <выр>        — вычислить выражение\n' +
+                  '  uptime            — время работы системы\n' +
+                  '  sysinfo           — информация о системе\n' +
+                  '  color <цвет>      — изменить цвет текста (green/red/blue/yellow/white)\n' +
+                  '  history           — история команд\n' +
+                  '  cowsay <текст>    — корова говорит\n' +
+                  '  nevergonnagiveyoup — Rick Astley\n' +
+                  '  reboot            — перезагрузить\n' +
+                  '  exit              — закрыть терминал',
+            whoami: 'guest',
+            pwd: '/home/guest',
+            date: new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }),
+            uptime: (function() {
+                const sec = Math.floor((Date.now() - startTime) / 1000);
+                const h = Math.floor(sec / 3600);
+                const m = Math.floor((sec % 3600) / 60);
+                const s = sec % 60;
+                return `${h}ч ${m}м ${s}с`;
+            })(),
+            sysinfo: [
+                '  Система:    Simple Web OS v2.0',
+                '  Ядро:       JS/HTML5/CSS3',
+                '  Окружение:  Браузер (' + navigator.userAgent.split(' ').slice(-1)[0] + ')',
+                '  Язык:       русский',
+                '  Архитектура: веб-приложение',
+                '  Пользователь: guest',
+                '  Дом:        /home/guest',
+                '  Терминал:   /dev/tty1'
+            ].join('\n'),
+            neofetch: [
+                '            .-/+oossssoo+/-.            ',
+                '        `:+ssssssssssssssssss+:`        ',
+                '      -+ssssssssssssssssssyyssss+-      ',
+                '    .ossssssssssssssssssMMMNNMMMysso.    ',
+                '   /ssssssssssshdmmNNmmyNMMMMh+ssssss/   ',
+                '  +ssssssssshmydMMMMMMMNddddy:ssssssss+  ',
+                ' /yyyyysssyymNMMMhhdso++osyhhyyyooyyysy/ ',
+                '  -+oyyyssyhmMMMh-        .omMhysssyyyy/  ',
+                '    .:/oyyymMMMN:          :mMMmhs:..`    ',
+                '       -smMMMNNd.   `.-`  .sNMMNmhs-      ',
+                '      :mNMMMNNmh/`.:+syyso+/:ymMMNmh:     ',
+                '     .mNMMMNmdyso++oyhhhhyysoohmMMNmm.    ',
+                '     /NMMNmdhyyso/+oysssssyhhhdmNMMMN/    ',
+                '     /NMMMmhhsso/:.-:+yhhhhhdmMMMMMMN/    ',
+                '     `mNMMMmhyo/:`` ``.:+sydmNMMMMMNm`    ',
+                '      -dNMMMNmdhyo/-````./oydNMMMMNd-     ',
+                '       :mNMMMMMMMNmdhhhhdmNMMMMMMNm:      ',
+                '        `/yNMMMMMMMMMMMMMMMNdyo/`        ',
+                '          `.+shmNMMMMMMMmyo/.`          ',
+                '             `.-:://::-.`              ',
+                '',
+                '  guest@webos',
+                '  -----------',
+                '  OS: Simple Web OS v2.0',
+                '  Host: Браузер (' + navigator.platform + ')',
+                '  Kernel: JS/HTML5/CSS3',
+                '  Uptime: ' + (function() {
+                    const sec = Math.floor((Date.now() - startTime) / 1000);
+                    const h = Math.floor(sec / 3600);
+                    const m = Math.floor((sec % 3600) / 60);
+                    return h + 'h ' + m + 'm';
+                })(),
+                '  Shell: HackerTerm 1.0',
+                '  Resolution: ' + screen.width + 'x' + screen.height,
+                '  DE: Simple Web Desktop'
+            ].join('\n'),
+            ls: 'Documents/  Downloads/  Pictures/  Music/  Projects/  .bashrc  .profile  README.md',
+            exit: 'Выход... Вы можете закрыть окно.',
+            'nevergonnagiveyoup': [
+                '',
+                '   ╔══════════════════════════════════════╗',
+                '   ║                                      ║',
+                '   ║    We\'re no strangers to love        ║',
+                '   ║    You know the rules and so do I    ║',
+                '   ║    A full commitment\'s what I\'m      ║',
+                '   ║    thinking of                       ║',
+                '   ║    You wouldn\'t get this from any    ║',
+                '   ║    other guy                         ║',
+                '   ║                                      ║',
+                '   ║    ♫ NEVER GONNA GIVE YOU UP ♫       ║',
+                '   ║    ♫ NEVER GONNA LET YOU DOWN ♫      ║',
+                '   ║    ♫ NEVER GONNA RUN AROUND AND      ║',
+                '   ║      DESERT YOU ♫                    ║',
+                '   ║    ♫ NEVER GONNA MAKE YOU CRY ♫      ║',
+                '   ║    ♫ NEVER GONNA SAY GOODBYE ♫       ║',
+                '   ║    ♫ NEVER GONNA TELL A LIE AND      ║',
+                '   ║      HURT YOU ♫                      ║',
+                '   ║                                      ║',
+                '   ║     https://bit.ly/3X9J3dP           ║',
+                '   ║                                      ║',
+                '   ╚══════════════════════════════════════╝',
+                ''
+            ].join('\n')
+        };
+
+        function scrollToBottom() { output.scrollTop = output.scrollHeight; }
+
+        function printLine(text, cls) {
+            const line = document.createElement('div');
+            if (cls) line.className = cls;
+            line.textContent = text;
+            output.appendChild(line);
+            scrollToBottom();
+        }
+
+        function printPrompt() {
+            const line = document.createElement('div');
+            line.innerHTML = '<span class="term-prompt">guest@webos:~$</span> ';
+            output.appendChild(line);
+            scrollToBottom();
+        }
+
+        function processCommand(cmd) {
+            const trimmed = cmd.trim();
+            if (!trimmed) return;
+            history.push(trimmed);
+            histIdx = history.length;
+            const parts = trimmed.split(/\s+/);
+            const command = parts[0].toLowerCase();
+            const args = parts.slice(1);
+
+            if (COMMANDS[command]) {
+                if (typeof COMMANDS[command] === 'function') {
+                    const result = COMMANDS[command](args);
+                    if (result !== undefined && result !== null) printLine(result, 'term-info');
+                } else {
+                    printLine(COMMANDS[command], 'term-info');
+                }
+            } else if (command === 'echo') {
+                printLine(args.join(' '), '');
+            } else if (command === 'clear') {
+                output.innerHTML = '';
+                printPrompt();
+                return;
+            } else if (command === 'cat') {
+                if (args.length === 0) printLine('cat: не указан файл', 'term-error');
+                else {
+                    const files = { 'readme.md': '# Simple Web OS\n\nДобро пожаловать в веб-операционную систему!', '.bashrc': 'export PS1="guest@webos:~$ "\nalias ll="ls -la"\nalias ..="cd .."', '.profile': '# ~/.profile\n\necho "Добро пожаловать в Simple Web OS"\necho "Введите help для справки"', 'note.txt': 'Это простой текстовый файл.\nСоздан для демонстрации команды cat.' };
+                    const fname = args[0].toLowerCase();
+                    if (files[fname]) printLine(files[fname], '');
+                    else printLine('cat: ' + args[0] + ': файл не найден', 'term-error');
+                }
+            } else if (command === 'calc') {
+                try {
+                    const expr = args.join(' ');
+                    const result = Function('"use strict"; return (' + expr + ')')();
+                    printLine(expr + ' = ' + result, 'term-info');
+                } catch (e) { printLine('calc: ошибка в выражении', 'term-error'); }
+            } else if (command === 'color') {
+                const colorMap = { 'green': '#00ff41', 'red': '#ff5555', 'blue': '#55b5ff', 'yellow': '#ffaa00', 'white': '#ffffff', 'cyan': '#00ffff', 'pink': '#ff69b4' };
+                const color = args[0] ? args[0].toLowerCase() : '';
+                if (colorMap[color]) { output.style.color = colorMap[color]; printLine('Цвет изменён на ' + color, 'term-info'); }
+                else { printLine('Доступные цвета: green, red, blue, yellow, white, cyan, pink', 'term-warn'); }
+            } else if (command === 'history') {
+                history.forEach((h, i) => printLine('  ' + (i+1) + '  ' + h, ''));
+            } else if (command === 'cowsay') {
+                const text = args.join(' ') || 'Moo!';
+                const cow = [
+                    ' ' + '─'.repeat(text.length + 2),
+                    '│ ' + text + ' │',
+                    ' ' + '─'.repeat(text.length + 2),
+                    '    \\   ^__^',
+                    '     \\  (oo)\\_______',
+                    '        (__)\\       )\\/\\',
+                    '            ||----w |',
+                    '            ||     ||'
+                ];
+                cow.forEach(l => printLine(l, ''));
+            } else if (command === 'reboot') {
+                printLine('Перезагрузка...', 'term-warn');
+                setTimeout(() => location.reload(), 500);
+                return;
+            } else if (command === 'sudo') {
+                printLine('  [sudo] пароль для guest:', '');
+                setTimeout(() => { printLine('  Извините, пользователь guest не имеет прав sudo.', 'term-error'); printPrompt(); }, 300);
+                return;
+            } else {
+                printLine('bash: ' + command + ': команда не найдена', 'term-error');
+                printLine('Введите "help" для списка команд.', '');
+            }
+            printPrompt();
+        }
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const cmd = input.value;
+                input.value = '';
+                const promptLine = document.createElement('div');
+                promptLine.innerHTML = '<span class="term-prompt">guest@webos:~$</span> ' + cmd;
+                output.appendChild(promptLine);
+                scrollToBottom();
+                processCommand(cmd);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (history.length > 0) { histIdx = Math.max(0, histIdx - 1); input.value = history[histIdx]; }
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (histIdx < history.length - 1) { histIdx++; input.value = history[histIdx]; }
+                else { histIdx = history.length; input.value = ''; }
+            } else if (e.key === 'Tab') {
+                e.preventDefault();
+                const val = input.value.toLowerCase();
+                const cmds = Object.keys(COMMANDS).concat(['echo', 'clear', 'cat', 'calc', 'color', 'history', 'cowsay', 'reboot', 'sudo']);
+                const match = cmds.find(c => c.startsWith(val));
+                if (match) input.value = match + ' ';
+            }
+        });
+
+        setTimeout(() => { printPrompt(); input.focus(); }, 100);
+
+        const termWin = document.getElementById('terminal');
+        const observer = new MutationObserver(() => {
+            if (termWin.classList.contains('active')) setTimeout(() => input.focus(), 50);
+        });
+        observer.observe(termWin, { attributes: true, attributeFilter: ['class'] });
+    })();
+
+    // -------------------- ЧАСЫ --------------------
+    (function initClock() {
+        const hoursEl = document.getElementById('clock-hours');
+        const minutesEl = document.getElementById('clock-minutes');
+        const secondsEl = document.getElementById('clock-seconds');
+        const dateEl = document.getElementById('clock-date');
+        const days = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+        const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+
+        function updateClock() {
+            const now = new Date();
+            hoursEl.textContent = String(now.getHours()).padStart(2, '0');
+            minutesEl.textContent = String(now.getMinutes()).padStart(2, '0');
+            secondsEl.textContent = ':' + String(now.getSeconds()).padStart(2, '0');
+            dateEl.textContent = days[now.getDay()] + ', ' + now.getDate() + ' ' + months[now.getMonth()] + ' ' + now.getFullYear() + ' г.';
+        }
+        updateClock();
+        setInterval(updateClock, 500);
+    })();
+
+    // ========================================================================
+    // ====== ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ ======
+    // ========================================================================
+    document.addEventListener('DOMContentLoaded', function() {
+
+        // Анимация загрузки
+        const progressBar = document.getElementById('progress-bar');
+        let width = 0;
+        const loadingInterval = setInterval(() => {
+            if (width >= 100) {
+                clearInterval(loadingInterval);
+                const screen = document.getElementById('loading-screen');
+                screen.style.opacity = '0';
+                setTimeout(() => { screen.style.display = 'none'; }, 500);
+            } else {
+                width += Math.random() * 3 + 1;
+                if (width > 100) width = 100;
+                progressBar.style.width = width + '%';
+            }
+        }, 50);
+
+        // --- Браузер ---
+        const goButton = document.getElementById('go-btn');
+        const urlInput = document.getElementById('url-input');
+        const webFrame = document.getElementById('web-frame');
+        function loadUrl() {
+            let url = urlInput.value.trim();
+            if (!url) return;
+            if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+            try { new URL(url); webFrame.src = url; } catch (error) { webFrame.src = 'https://hackerai.co'; urlInput.style.borderColor = 'red'; setTimeout(() => { urlInput.style.borderColor = '#ccc'; }, 1500); }
+        }
+        goButton.addEventListener('click', loadUrl);
+        urlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); loadUrl(); } });
+
+        // --- Просмотрщик файлов ---
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.id = 'universal-file-input';
+        fileInput.accept = '*.*';
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+        const selectFileBtn = document.getElementById('select-file-btn');
+        selectFileBtn.onclick = () => fileInput.click();
+        const container = document.getElementById('preview-container');
+        const info = document.getElementById('file-info');
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            info.textContent = `Имя: ${file.name} | Размер: ${(file.size / 1024).toFixed(1)} КБ | Тип: ${file.type || 'неизвестно'}`;
+            container.querySelectorAll('iframe, video, audio, img, object').forEach(el => { if (el.src && el.src.startsWith('blob:')) URL.revokeObjectURL(el.src); });
+            container.innerHTML = '';
+            const lowerName = file.name.toLowerCase();
+            const mime = file.type.split('/')[0];
+            if (lowerName.endsWith('.html') || lowerName.endsWith('.htm') || file.type === 'text/html') {
+                const iframe = document.createElement('iframe'); iframe.src = URL.createObjectURL(file);
+                iframe.style.width = '100%'; iframe.style.height = '100%'; iframe.style.border = 'none';
+                iframe.setAttribute('sandbox', 'allow-same-origin'); container.appendChild(iframe);
+            } else if (mime === 'image') { const img = document.createElement('img'); img.src = URL.createObjectURL(file); container.appendChild(img); }
+            else if (mime === 'video') { const video = document.createElement('video'); video.src = URL.createObjectURL(file); video.controls = true; video.autoplay = true; container.appendChild(video); }
+            else if (mime === 'audio') { const audio = document.createElement('audio'); audio.src = URL.createObjectURL(file); audio.controls = true; audio.autoplay = true; container.appendChild(audio); }
+            else if (file.type === 'application/pdf' || lowerName.endsWith('.pdf')) {
+                const pdfIframe = document.createElement('iframe'); pdfIframe.src = URL.createObjectURL(file);
+                pdfIframe.style.width = '100%'; pdfIframe.style.height = '100%'; container.appendChild(pdfIframe);
+            } else if (mime === 'text' || ['application/javascript', 'application/json', 'application/xml'].includes(file.type)) {
+                const reader = new FileReader();
+                reader.onload = function(e) { const code = document.createElement('pre'); code.className = 'code-viewer'; code.textContent = e.target.result; container.appendChild(code); };
+                reader.readAsText(file);
+            } else { container.innerHTML = '<p style="color: #777;">Тип файла не поддерживается для предпросмотра.<br>Но вы можете скачать его через контекстное меню.</p>'; }
+        });
+
+        // Editor init
+        const editorTextarea = document.getElementById('editor-textarea');
+        setTimeout(() => { applyEditorCode(); }, 600);
+        editorTextarea.addEventListener('keydown', function(e) { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); applyEditorCode(); } });
+    });
+</script>
+
+</body>
+</html>
